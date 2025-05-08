@@ -1,64 +1,55 @@
 import streamlit as st
-import pandas as pd
+import requests
+from bs4 import BeautifulSoup
 import re
+import pandas as pd
 
-st.set_page_config(page_title="TikTok Keyword Comment Extractor", layout="centered")
+st.set_page_config(page_title="TikTok Keyword Extractor", layout="centered")
 
-st.title("🔍 TikTok Keyword Comment Extractor")
-st.markdown("这个工具可以帮助你提取 TikTok 视频中评论或标题里包含指定关键词的内容，并导出链接。")
+st.title("🔍 TikTok Keyword Extractor")
+st.write("提取包含关键词的 TikTok 视频评论 & 标题，并导出链接。")
 
 # 输入关键词
-keywords = st.text_area("请输入关键词（多个关键词请用逗号或换行分隔）：")
-keyword_list = [k.strip().lower() for k in re.split(',|\n', keywords) if k.strip()]
+keywords = st.text_input("请输入关键词（多个关键词请用逗号分隔）", placeholder="如：inflation, hoodie, streetwear")
 
-# 输入视频链接
-video_links_raw = st.text_area("请输入 TikTok 视频链接（每行一个）：")
-video_links = [v.strip() for v in video_links_raw.splitlines() if v.strip()]
+# 粘贴视频链接
+video_links_input = st.text_area("粘贴多个 TikTok 视频链接（每行一个）", height=200, placeholder="https://www.tiktok.com/@user/video/123456789...")
 
-# 模拟提取（实际应通过 API 或爬虫）
-def mock_extract_comments(video_url):
-    # 模拟评论数据
-    sample_comments = [
-        "I love this inflation hoodie!",
-        "Where is this from?",
-        "Drip hoodie goes crazy 🔥",
-        "inflation jeans look cool!",
-        "Mid tbh",
-        "Anyone know the brand?"
-    ]
-    sample_title = "OOTD ft. my new drip hoodie 💥"
-    return sample_title, sample_comments
-
-# 提取 & 匹配关键词
-results = []
-
+# 提交按钮
 if st.button("开始提取"):
-    if not keyword_list or not video_links:
-        st.warning("请填写关键词和视频链接")
+    if not keywords or not video_links_input:
+        st.warning("请填写关键词和视频链接。")
     else:
-        with st.spinner("正在提取中..."):
-            for url in video_links:
-                title, comments = mock_extract_comments(url)
-                matched_text = []
+        keyword_list = [kw.strip().lower() for kw in keywords.split(",")]
+        video_links = [link.strip() for link in video_links_input.strip().splitlines() if link.strip()]
+        
+        matched_results = []
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+
+        for link in video_links:
+            try:
+                response = requests.get(link, headers=headers, timeout=10)
+                soup = BeautifulSoup(response.text, "html.parser")
+                text_content = soup.get_text(separator=" ").lower()
 
                 for kw in keyword_list:
-                    for text in [title] + comments:
-                        if kw in text.lower():
-                            matched_text.append(text)
+                    if kw in text_content:
+                        matched_results.append({"Keyword": kw, "Video Link": link})
+                        break
+            except Exception as e:
+                st.error(f"无法处理链接：{link}，原因：{e}")
 
-                if matched_text:
-                    results.append({
-                        "Video URL": url,
-                        "Matched Text": "\n".join(set(matched_text))
-                    })
-
-        if results:
-            df = pd.DataFrame(results)
-            st.success(f"共提取到 {len(results)} 条命中视频记录！")
+        if matched_results:
+            df = pd.DataFrame(matched_results)
+            st.success(f"共找到 {len(df)} 条包含关键词的视频链接。")
             st.dataframe(df)
 
-            csv = df.to_csv(index=False)
-            st.download_button("📥 下载 CSV 文件", data=csv, file_name="matched_comments.csv", mime="text/csv")
-
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button("📥 下载 CSV 文件", csv, "tiktok_keywords.csv", "text/csv")
         else:
-            st.info("没有命中关键词的视频")
+            st.info("未找到任何匹配关键词的链接。")
+
+st.markdown("---")
+st.caption("Made with ❤️ by inflation team.")
